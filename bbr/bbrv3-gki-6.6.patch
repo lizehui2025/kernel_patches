@@ -61,7 +61,7 @@ index a19203586..d281e4fed 100644
  void tcp_rate_skb_sent(struct sock *sk, struct sk_buff *skb);
  void tcp_rate_skb_delivered(struct sock *sk, struct sk_buff *skb,
 diff --git a/net/ipv4/tcp_bbr.c b/net/ipv4/tcp_bbr.c
-index 146792cd2..985631240 100644
+index 146792cd2..65f8639cc 100644
 --- a/net/ipv4/tcp_bbr.c
 +++ b/net/ipv4/tcp_bbr.c
 @@ -1,18 +1,19 @@
@@ -2416,7 +2416,7 @@ index 146792cd2..985631240 100644
 +	struct bbr *bbr = *bbrp;
 +
 +	if (!bbr) {
-+		bbr = kzalloc(sizeof(*bbr), GFP_KERNEL);
++		bbr = kzalloc(sizeof(*bbr), GFP_ATOMIC);
 +		if (!bbr)
 +			return;
 +		*bbrp = bbr;
@@ -2777,5 +2777,23 @@ index d24d7ba95..d6afbfa61 100644
  		NET_INC_STATS(sock_net(sk),
  				LINUX_MIB_TCPLOSSPROBERECOVERY);
  	} else if (!(flag & (FLAG_SND_UNA_ADVANCED |
-
+diff --git a/net/ipv4/tcp_minisocks.c b/net/ipv4/tcp_minisocks.c
+index 5282a5a9a..ef483a6b8 100644
+--- a/net/ipv4/tcp_minisocks.c
++++ b/net/ipv4/tcp_minisocks.c
+@@ -497,6 +497,14 @@ struct sock *tcp_create_openreq_child(const struct sock *sk,
+ 	newtp = tcp_sk(newsk);
+ 	oldtp = tcp_sk(sk);
  
++	/* sk_clone_lock() copies inet_connection_sock byte-for-byte from the
++	 * listener. Some congestion controls keep per-socket state by pointer
++	 * in icsk_ca_priv, so force child sockets to allocate their own state
++	 * in tcp_init_transfer().
++	 */
++	memset(newicsk->icsk_ca_priv, 0, sizeof(newicsk->icsk_ca_priv));
++	newicsk->icsk_ca_initialized = 0;
++
+ 	smc_check_reset_syn_req(oldtp, req, newtp);
+ 
+ 	/* Now setup tcp_sock */
+
