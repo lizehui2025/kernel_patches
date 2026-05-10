@@ -61,7 +61,7 @@ index a19203586..d281e4fed 100644
  void tcp_rate_skb_sent(struct sock *sk, struct sk_buff *skb);
  void tcp_rate_skb_delivered(struct sock *sk, struct sk_buff *skb,
 diff --git a/net/ipv4/tcp_bbr.c b/net/ipv4/tcp_bbr.c
-index 146792cd2..302c44ff0 100644
+index 146792cd2..985631240 100644
 --- a/net/ipv4/tcp_bbr.c
 +++ b/net/ipv4/tcp_bbr.c
 @@ -1,18 +1,19 @@
@@ -1794,11 +1794,11 @@ index 146792cd2..302c44ff0 100644
 +{
 +	struct bbr *bbr = bbr_get(sk);
 +
-+	/* If ACK matches a TLP retransmit, persist the filter. If we detect
-+	 * that a TLP retransmit plugged a tail loss, we'll want to remember
-+	 * how much data the path delivered before the tail loss.
++	/* This GKI 6.6 tree does not carry rate_sample::is_acking_tlp_retrans_seq.
++	 * Reset the filter at the loss round boundary; TLP recovery still reaches
++	 * BBR through CA_EVENT_TLP_RECOVERY.
 +	 */
-+	if (bbr->loss_round_start && !rs->is_acking_tlp_retrans_seq) {
++	if (bbr->loss_round_start) {
 +		bbr->bw_latest = ctx->sample_bw;
 +		bbr->inflight_latest = rs->delivered;
 +	}
@@ -2525,7 +2525,7 @@ index 146792cd2..302c44ff0 100644
 +	 */
 +	rs.losses = 1;	/* TLP probe repaired loss of a single segment */
 +	rs.prior_in_flight = bbr->inflight_latest + rs.losses;
-+	rs.is_app_limited = tp->tlp_orig_data_app_limited;
++	rs.is_app_limited = tp->app_limited ? true : false;
 +	if (bbr_is_inflight_too_high(sk, &rs))
 +		bbr_handle_inflight_too_high(sk, &rs);
 +}
@@ -2717,7 +2717,7 @@ index 146792cd2..302c44ff0 100644
  MODULE_DESCRIPTION("TCP BBR (Bottleneck Bandwidth and RTT)");
 +MODULE_VERSION(__stringify(BBR_VERSION));
 diff --git a/net/ipv4/tcp_input.c b/net/ipv4/tcp_input.c
-index d24d7ba95..2d7e36aef 100644
+index d24d7ba95..d6afbfa61 100644
 --- a/net/ipv4/tcp_input.c
 +++ b/net/ipv4/tcp_input.c
 @@ -383,7 +383,7 @@ static void __tcp_ecn_check_ce(struct sock *sk, const struct sk_buff *skb)
@@ -2768,4 +2768,14 @@ index d24d7ba95..2d7e36aef 100644
 +		tcp_notify_skb_loss_event(sk, skb);
  	}
  }
+ 
+@@ -3799,6 +3804,7 @@ static void tcp_process_tlp_ack(struct sock *sk, u32 ack, int flag)
+ 		tcp_set_ca_state(sk, TCP_CA_CWR);
+ 		tcp_end_cwnd_reduction(sk);
+ 		tcp_try_keep_open(sk);
++		tcp_ca_event(sk, CA_EVENT_TLP_RECOVERY);
+ 		NET_INC_STATS(sock_net(sk),
+ 				LINUX_MIB_TCPLOSSPROBERECOVERY);
+ 	} else if (!(flag & (FLAG_SND_UNA_ADVANCED |
+
  
